@@ -1499,30 +1499,19 @@ const TEASPEAK_DEFAULT_FILETRANSFER_PORT: u16 = 30303;
 
 /// Resolve the TCP endpoint for a file transfer.
 ///
-/// - IP: TeaSpeak often reports `ip=0.0.0.0` (or omits it) → use the voice peer IP.
-///   We run as a server-side process (the browser talks to us, we talk to the
-///   TS3/TeaSpeak server the user picked), so trusting an arbitrary reported IP
-///   outright would let *any* server the user points us at redirect our file
-///   transfer connection into our own host's internal network (SSRF). If the
-///   server we're actually voice-connected to is itself internal (a
-///   self-hosted LAN setup), an internal reported IP is expected and allowed;
-///   otherwise an internal reported IP is ignored in favor of the voice peer's
-///   own IP, exactly like the "not reported at all" case above.
+/// - IP: always the voice peer's; the reported `ip` is ignored. We run as a
+///   server-side process, so trusting it would let the server redirect our TCP
+///   connection to another host (SSRF), including hosts on our own LAN when the
+///   voice server itself is on the LAN. TeaSpeak often reports `ip=0.0.0.0`
+///   anyway. A file transfer never goes anywhere but the server we are
+///   voice-connected to.
 /// - Port: prefer `notifystart{down,up}load` `port` (usually 30033 / 30303). If it is
 ///   0 or equals the voice UDP port (almost never a valid FT TCP port), use
 ///   `fallback_port` (last known FT port, else server-type default).
 fn resolve_filetransfer_addr(
-	reported_ip: Option<IpAddr>, reported_port: u16, voice_peer: SocketAddr,
-	fallback_port: u16,
+	reported_port: u16, voice_peer: SocketAddr, fallback_port: u16,
 ) -> SocketAddr {
-	let ip = match reported_ip {
-		Some(ip)
-			if !ip.is_unspecified() && (resolver::is_public_addr(&ip) || !resolver::is_public_addr(&voice_peer.ip())) =>
-		{
-			ip
-		}
-		_ => voice_peer.ip(),
-	};
+	let ip = voice_peer.ip();
 	let port = if reported_port == 0 || reported_port == voice_peer.port() {
 		fallback_port
 	} else {
@@ -1551,7 +1540,7 @@ impl ConnectedConnection {
 			DEFAULT_FILETRANSFER_PORT
 		});
 		let addr =
-			resolve_filetransfer_addr(reported_ip, reported_port, voice_peer, fallback_port);
+			resolve_filetransfer_addr(reported_port, voice_peer, fallback_port);
 		if reported_port != 0 && reported_port != voice_peer.port() {
 			self.known_filetransfer_port = Some(reported_port);
 		}

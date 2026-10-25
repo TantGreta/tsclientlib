@@ -35,3 +35,23 @@ fn negative_iconid() { test_iconid("-96136942", 4198830354); }
 
 #[test]
 fn big_iconid() { test_iconid("18446744073225738240", 3811153920); }
+
+#[test]
+fn filetransfer_always_uses_voice_peer_ip() {
+	use std::net::SocketAddr;
+	let lan_server: SocketAddr = "192.168.1.10:9987".parse().unwrap();
+	let public_server: SocketAddr = "203.0.113.5:9987".parse().unwrap();
+	// Whatever the server reports, the TCP connection goes to the server we are connected to.
+	for server in [lan_server, public_server] {
+		assert_eq!(super::resolve_filetransfer_addr(30033, server, 30033), SocketAddr::new(server.ip(), 30033));
+	}
+}
+
+#[test]
+fn filetransfer_port_falls_back_when_missing_or_voice_port() {
+	use std::net::SocketAddr;
+	let server: SocketAddr = "192.168.1.10:9987".parse().unwrap();
+	assert_eq!(super::resolve_filetransfer_addr(0, server, 30303).port(), 30303);
+	assert_eq!(super::resolve_filetransfer_addr(9987, server, 30303).port(), 30303);
+	assert_eq!(super::resolve_filetransfer_addr(30044, server, 30303).port(), 30044);
+}
