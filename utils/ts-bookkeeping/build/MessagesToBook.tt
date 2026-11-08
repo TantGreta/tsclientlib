@@ -26,6 +26,8 @@ fn diff(_fmt: &mut std::fmt::Formatter, new: &str, event: &Event, p: &Property, 
 							invoker: invoker.clone(),
 							extra: ExtraInfo {
 								reason,
+								reason_message: reason_message.clone(),
+								ban_time,
 							},
 						});
 					}
@@ -38,6 +40,8 @@ fn diff(_fmt: &mut std::fmt::Formatter, new: &str, event: &Event, p: &Property, 
 							invoker: invoker.clone(),
 							extra: ExtraInfo {
 								reason,
+								reason_message: reason_message.clone(),
+								ban_time,
 							},
 						});
 					}
@@ -54,7 +58,7 @@ fn create_event(_fmt: &mut std::fmt::Formatter, event: &Event, change: &str, old
 					old: PropertyValue::<#= event.book_struct.name #>(old),
 	<# } #>
 					invoker: invoker.clone(),
-					extra: ExtraInfo { reason },
+					extra: ExtraInfo { reason, reason_message: reason_message.clone(), ban_time },
 				});
 	<#
 	Ok(())
@@ -145,6 +149,22 @@ for (msg_name, group) in groups {
 				<# } else { #>
 				let reason: Option<Reason> = None;
 				<# } #>
+				#[allow(unused_variables)]
+				<# if event.msg.attributes.iter().any(|a| a == "reasonmsg") { #>
+				let reason_message: Option<String> = Some(m.reason_message.to_string());
+				<# } else if event.msg.attributes.iter().any(|a| a == "reasonmsg?") { #>
+				let reason_message: Option<String> = m.reason_message.as_ref().map(|s| s.to_string());
+				<# } else { #>
+				let reason_message: Option<String> = None;
+				<# } #>
+				#[allow(unused_variables)]
+				<# if event.msg.attributes.iter().any(|a| a == "bantime") { #>
+				let ban_time: Option<Duration> = Some(m.ban_time);
+				<# } else if event.msg.attributes.iter().any(|a| a == "bantime?") { #>
+				let ban_time: Option<Duration> = m.ban_time;
+				<# } else { #>
+				let ban_time: Option<Duration> = None;
+				<# } #>
 <#
 	for event in group {
 		let book_name = &event.book_struct.name;
@@ -197,7 +217,7 @@ for (msg_name, group) in groups {
 					id: <#= event.get_property_id(to, from, "m") #>,
 					old: <#= get_property(to, "old") #>,
 					invoker: invoker.clone(),
-					extra: ExtraInfo { reason },
+					extra: ExtraInfo { reason, reason_message: reason_message.clone(), ban_time },
 				});
 									<# } else if from_opt {
 										let mut prefix = "";
@@ -222,7 +242,7 @@ for (msg_name, group) in groups {
 						id: <#= event.get_property_id(to, from, "m") #>,
 						old: <#= get_property(to, "old") #>,
 						invoker: invoker.clone(),
-						extra: ExtraInfo { reason },
+						extra: ExtraInfo { reason, reason_message: reason_message.clone(), ban_time },
 					});
 				<# } #>
 				}
@@ -234,7 +254,7 @@ for (msg_name, group) in groups {
 					id: <#= event.get_property_id(to, from, "m") #>,
 					old: <#= get_property(to, "old") #>,
 					invoker: invoker.clone(),
-					extra: ExtraInfo { reason },
+					extra: ExtraInfo { reason, reason_message: reason_message.clone(), ban_time },
 				});
 								<# }
 								}
@@ -248,7 +268,7 @@ for (msg_name, group) in groups {
 				events.push(Event::PropertyAdded {
 					id: <#= event.get_property_id(to, from, "m") #>,
 					invoker: invoker.clone(),
-					extra: ExtraInfo { reason },
+					extra: ExtraInfo { reason, reason_message: reason_message.clone(), ban_time },
 				});
 								<# }
 								RuleOp::Remove => {
@@ -264,7 +284,7 @@ for (msg_name, group) in groups {
 						id: <#= event.get_property_id(to, from, "m") #>,
 						old: <#= get_property(to, "old") #>,
 						invoker: invoker.clone(),
-						extra: ExtraInfo { reason },
+						extra: ExtraInfo { reason, reason_message: reason_message.clone(), ban_time },
 					});
 				}
 								<# }

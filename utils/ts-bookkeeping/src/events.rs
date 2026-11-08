@@ -16,6 +16,12 @@ pub struct ExtraInfo {
 	/// Set for e.g. new clients to distinguish if they joined or are made available because we
 	/// subscribed to a channel.
 	pub reason: Option<Reason>,
+	/// The reason text a kick, ban, move or disconnect came with (`reasonmsg`), if the server sent one.
+	#[serde(default)]
+	pub reason_message: Option<String>,
+	/// How long a ban lasts (`bantime`) when a client left because it was banned; zero means permanent.
+	#[serde(default)]
+	pub ban_time: Option<Duration>,
 }
 
 /// An event gets fired when something in the data structure of a connection

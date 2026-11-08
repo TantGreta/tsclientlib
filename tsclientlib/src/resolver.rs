@@ -113,13 +113,24 @@ pub fn is_public_addr(ip: &IpAddr) -> bool {
 	}
 }
 
+static ALLOW_PRIVATE_TARGETS: AtomicBool = AtomicBool::new(false);
+
+/// Allow connections to private, loopback and other internal addresses for the
+/// whole process. A desktop client running on the user's own machine calls this
+/// at startup: the user's server may well be on their LAN, and there is no host
+/// network to protect. Server-side gateways leave it off.
+pub fn set_allow_private_targets(allow: bool) { ALLOW_PRIVATE_TARGETS.store(allow, Ordering::Relaxed); }
+
 /// Whether we may open a connection to `ip`. We run server-side on behalf of
 /// arbitrary browser users, so by default only public addresses are fair game -
 /// anything else would let a user (or a server/DNS record they control) point
 /// us into the host's own network. Self-hosters whose TeamSpeak server lives
-/// on the same LAN opt in with `ALLOW_PRIVATE_TARGETS=1`.
+/// on the same LAN opt in with `ALLOW_PRIVATE_TARGETS=1`; desktop clients with
+/// [`set_allow_private_targets`].
 pub fn is_allowed_target(ip: &IpAddr) -> bool {
-	std::env::var("ALLOW_PRIVATE_TARGETS").is_ok_and(|v| v == "1") || is_public_addr(ip)
+	ALLOW_PRIVATE_TARGETS.load(Ordering::Relaxed)
+		|| std::env::var("ALLOW_PRIVATE_TARGETS").is_ok_and(|v| v == "1")
+		|| is_public_addr(ip)
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -572,6 +583,17 @@ mod test {
 		] {
 			assert!(!is_public_addr(&ip.parse().unwrap()), "{ip} should be internal");
 		}
+	}
+
+	#[test]
+	fn private_targets_allowed_after_opt_in() {
+		let lan: IpAddr = "192.168.1.10".parse().unwrap();
+		if std::env::var("ALLOW_PRIVATE_TARGETS").is_err() {
+			assert!(!is_allowed_target(&lan));
+		}
+		set_allow_private_targets(true);
+		assert!(is_allowed_target(&lan));
+		set_allow_private_targets(false);
 	}
 
 	#[test]
