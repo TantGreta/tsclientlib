@@ -1,14 +1,12 @@
 //! This module contains cryptography related code.
-use std::convert::TryInto;
+use std::convert::{TryFrom, TryInto};
 use std::{cmp, fmt, str};
 
 use base64::prelude::*;
 use curve25519_dalek_ng::constants;
 use curve25519_dalek_ng::edwards::{CompressedEdwardsY, EdwardsPoint};
 use curve25519_dalek_ng::scalar::Scalar;
-use elliptic_curve::sec1::{FromEncodedPoint, ToEncodedPoint};
-use generic_array::GenericArray;
-use generic_array::typenum::Unsigned;
+use elliptic_curve::sec1::{FromSec1Point, ToSec1Point};
 use num_bigint::{BigInt, Sign};
 use p256::ecdsa::signature::{Signer, Verifier};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -177,7 +175,8 @@ impl EccKeyPubP256 {
 				if let (Some(ASN1Block::Integer(_, x)), Some(ASN1Block::Integer(_, y))) =
 					(blocks.get(2), blocks.get(3))
 				{
-					let field_size = elliptic_curve::FieldBytesSize::<p256::NistP256>::to_usize();
+					// P-256 coordinates are 32 bytes.
+					let field_size = 32;
 					let to_coord = |src: &BigInt| -> Result<elliptic_curve::FieldBytes<p256::NistP256>> {
 						let (sign, mut bytes) = src.to_bytes_le();
 						if sign == Sign::Minus {
@@ -193,16 +192,19 @@ impl EccKeyPubP256 {
 						bytes.resize(field_size, 0);
 						// Convert to big-endian
 						bytes.reverse();
-						Ok(*GenericArray::from_slice(&bytes))
+						<elliptic_curve::FieldBytes<p256::NistP256> as TryFrom<&[u8]>>::try_from(
+							bytes.as_slice(),
+						)
+						.map_err(|_| Error::ParsePublicKeyFailed)
 					};
 					let x_coord = to_coord(x)?;
 					let y_coord = to_coord(y)?;
-					let enc_point = p256::EncodedPoint::from_affine_coordinates(
+					let enc_point = p256::Sec1Point::from_affine_coordinates(
 						&x_coord,
 						&y_coord,
 						false,
 					);
-					let enc_point = p256::PublicKey::from_encoded_point(&enc_point);
+					let enc_point = p256::PublicKey::from_sec1_point(&enc_point);
 					if enc_point.is_some().into() {
 						Ok(Self(enc_point.unwrap()))
 					} else {
@@ -223,7 +225,7 @@ impl EccKeyPubP256 {
 	pub fn to_ts(&self) -> String { BASE64_STANDARD.encode(self.to_tomcrypt()) }
 
 	pub fn to_tomcrypt(&self) -> Vec<u8> {
-		let enc_point = self.0.as_affine().to_encoded_point(false);
+		let enc_point = self.0.as_affine().to_sec1_point(false);
 		// We can unwrap here, creating the public key ensures that it is not the identity point,
 		// which is the only time this returns `None`.
 		let pubkey_x = BigInt::from_bytes_be(Sign::Plus, enc_point.x().unwrap());
@@ -242,7 +244,7 @@ impl EccKeyPubP256 {
 	/// Get the SEC1 encoding of the public key point on the curve.
 	pub fn to_short(&self) -> Vec<u8> {
 		// TODO Maybe compress?
-		self.0.as_affine().to_encoded_point(false).as_bytes().to_vec()
+		self.0.as_affine().to_sec1_point(false).as_bytes().to_vec()
 	}
 
 	/// Compute the uid of this key without encoding it in base64.
@@ -279,7 +281,10 @@ impl EccKeyPubP256 {
 
 impl EccKeyPrivP256 {
 	/// Create a new key key pair.
-	pub fn create() -> Self { Self(p256::SecretKey::random(&mut rand::thread_rng())) }
+	pub fn create() -> Self {
+		use elliptic_curve::Generate;
+		Self(p256::SecretKey::generate_from_rng(&mut rand_p256::rng()))
+	}
 
 	/// Try to import the key from any of the known formats.
 	pub fn import(data: &[u8]) -> Result<Self> {
@@ -323,10 +328,7 @@ impl EccKeyPrivP256 {
 		if data.len() != 32 {
 			Err(Error::NoShortKey)
 		} else {
-			Ok(Self(
-				p256::SecretKey::from_bytes(p256::FieldBytes::from_slice(data))
-					.map_err(|_| Error::NoShortKey)?,
-			))
+			Ok(Self(p256::SecretKey::from_slice(data).map_err(|_| Error::NoShortKey)?))
 		}
 	}
 
@@ -438,7 +440,7 @@ impl EccKeyPrivP256 {
 	}
 
 	pub fn to_tomcrypt(&self) -> Vec<u8> {
-		let enc_point = self.0.public_key().as_affine().to_encoded_point(false);
+		let enc_point = self.0.public_key().as_affine().to_sec1_point(false);
 		// We can unwrap here, creating the public key ensures that it is not the identity point,
 		// which is the only time this returns `None`.
 		let pubkey_x = BigInt::from_bytes_be(Sign::Plus, enc_point.x().unwrap());
